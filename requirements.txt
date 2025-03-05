@@ -2,3 +2,4 @@ python-telegram-bot
 gunicorn
 openai
 python-dotenv
+python-telegram-bot[webhooks]
