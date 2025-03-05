@@ -52,7 +52,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
     # Define the webhook URL (adjust it to your deployed server URL)
-    webhook_url = 'https://your-app-url.com/'  # Replace with your actual URL
+    webhook_url = 'https://for-telegram.onrender.com' 
 
     # Setup the webhook
     app.run_webhook(
