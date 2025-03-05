@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from langchain_openai import ChatOpenAI
-from langchain.globals import set_llm_provider
 
 # Load environment variables
 load_dotenv()
@@ -22,15 +21,12 @@ if not OPENAI_API_KEY:
 if not LANGCHAIN_API_KEY:
     raise ValueError("Missing LangChain API Key! Set LANGCHAIN_API_KEY in your environment variables.")
 
-# Set LangChain API provider
-set_llm_provider("langchain")  # Uses LangChain’s cloud services if needed
-
 # Initialize LangChain OpenAI client
 try:
     print("Initializing LangChain OpenAI client...")
     llm = ChatOpenAI(
-        api_key=LANGCHAIN_API_KEY,  # Using LangChain API instead of direct OpenAI
-        model="gpt-3.5-turbo",
+        api_key=LANGCHAIN_API_KEY,  # Using LangChain API
+        model="gpt-3.5-turbo",  # You can change this to another model like "gpt-4" if you have access
         temperature=0.7
     )
     # Test connection
@@ -44,7 +40,7 @@ except Exception as e:
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
-    await update.message.reply_text("Hello! I am Testo, here to assist you. Ask me anything!")
+    await update.message.reply_text("Hello! I am Testo powered by LangChain and OpenAI. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
