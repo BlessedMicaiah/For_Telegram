@@ -3,24 +3,33 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import openai
 import os
 
-# Set your OpenAI API key
-openai.api_key = os.getenv("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")
+# OpenAI API Key
+OPENAI_API_KEY = os.getenv("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")
+if not OPENAI_API_KEY:
+    raise ValueError("Missing OpenAI API Key! Set it as an environment variable.")
 
-# Set your Telegram bot token
-BOT_TOKEN = "7594844957:AAFr3sxpGljzXO2a0f5IDOaKXEjdkOC6nCg"
+# Initialize OpenAI client with API key
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+# Telegram Bot Token
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("Missing Telegram Bot Token! Set it as an environment variable.")
 
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
-    await update.message.reply_text("Hello! I am an Testo. Ask me anything!")
+    await update.message.reply_text("Hello! I am Testo. Ask me anything!")
 
 async def chat(update: Update, context: CallbackContext):
     """Handles messages and sends AI-generated responses."""
     user_message = update.message.text
-    response = openai.ChatCompletion.create(
+
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": user_message}]
     )
-    bot_reply = response["choices"][0]["message"]["content"]
+
+    bot_reply = response.choices[0].message.content
     await update.message.reply_text(bot_reply)
 
 def main():
