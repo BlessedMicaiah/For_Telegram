@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: telegram-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python aiAgent.py
+    envVars:
+      - key: RENDER
+        value: true
+      - key: WEBHOOK_URL
+        value: https://for-telegram.onrender.com
+      - key: PORT
+        value: 10000
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false

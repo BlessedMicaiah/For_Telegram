@@ -48,9 +48,9 @@ async def chat(update: Update, context: CallbackContext):
 
 # Main function to start the bot
 def main():
-    """Start the bot."""
+    """Start the bot using webhooks."""
     
-    print("Starting bot...")
+    print("Starting bot with webhook...")
     
     # Create the Application object
     app = Application.builder().token(BOT_TOKEN).build()
@@ -59,18 +59,40 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    # Run the bot using polling (for local development)
-    print("Bot is running. Press Ctrl+C to stop.")
-    app.run_polling()
+    # Check if running on Render or locally
+    is_render = os.environ.get('RENDER') == 'true'
     
-    # If you want to use webhook for production, uncomment the following:
-    # webhook_url = 'https://for-telegram.onrender.com' 
-    # app.run_webhook(
-    #     listen='0.0.0.0',
-    #     port=8080,             # Using a higher port number
-    #     url_path=BOT_TOKEN,
-    #     webhook_url=f"{webhook_url}/{BOT_TOKEN}"
-    # )
-
+    # Configure webhook parameters
+    if is_render:
+        # Production environment on Render
+        port = int(os.environ.get('PORT', 10000))
+        webhook_url = os.environ.get('WEBHOOK_URL', 'https://for-telegram.onrender.com')
+        print(f"Running on Render. Using webhook URL: {webhook_url}")
+    else:
+        # Local development - requires ngrok or similar tool
+        # To use locally:
+        # 1. Install ngrok: https://ngrok.com/download
+        # 2. Run: ngrok http 8443
+        # 3. Copy the HTTPS URL from ngrok and use it below
+        port = 8443
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        if not webhook_url:
+            print("WARNING: No WEBHOOK_URL environment variable found!")
+            print("To test locally with webhooks, you need to:")
+            print("1. Install ngrok: https://ngrok.com/download")
+            print("2. Run: ngrok http 8443")
+            print("3. Set the WEBHOOK_URL environment variable to your ngrok HTTPS URL")
+            print("Example: set WEBHOOK_URL=https://a1b2c3d4.ngrok.io")
+            return
+        print(f"Running locally. Using webhook URL: {webhook_url}")
+    
+    # Run the bot with webhook
+    app.run_webhook(
+        listen='0.0.0.0',
+        port=port,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{webhook_url}/{BOT_TOKEN}"
+    )
+    
 if __name__ == "__main__":
     main()
