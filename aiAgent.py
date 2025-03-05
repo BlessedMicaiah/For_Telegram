@@ -1,10 +1,14 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import openai
+from dotenv import load_dotenv
 import os
 
+# Load environment variables from .env file
+load_dotenv()
+
 # OpenAI API Key
-OPENAI_API_KEY = os.getenv("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")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("Missing OpenAI API Key! Set it as an environment variable.")
 
