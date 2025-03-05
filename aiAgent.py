@@ -13,7 +13,20 @@ if not OPENAI_API_KEY:
     raise ValueError("Missing OpenAI API Key! Set it as an environment variable.")
 
 # Initialize OpenAI client with API key
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+try:
+    print("Initializing OpenAI client...")
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    # Test the connection with a simple completion
+    test_response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": "This is a test. Respond with 'OK'."}],
+        max_tokens=5
+    )
+    print("OpenAI client initialized successfully!")
+except Exception as e:
+    print(f"ERROR initializing OpenAI client: {str(e)}")
+    print("Please check your OpenAI API key and network connection.")
+    raise
 
 # Telegram Bot Token
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -33,6 +46,7 @@ async def chat(update: Update, context: CallbackContext):
         print(f"Received message: {user_message}")
 
         # Get response from OpenAI API
+        print("Sending request to OpenAI API...")
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": user_message}]
@@ -40,11 +54,15 @@ async def chat(update: Update, context: CallbackContext):
 
         # Extract the bot's reply
         bot_reply = response.choices[0].message.content
-        print(f"Sending reply: {bot_reply[:30]}...")
+        print(f"Received response from OpenAI API: {bot_reply[:30]}...")
         await update.message.reply_text(bot_reply)
     except Exception as e:
-        print(f"Error processing message: {str(e)}")
-        await update.message.reply_text("Sorry, I encountered an error processing your message.")
+        error_msg = f"Error processing message: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        import traceback
+        traceback_str = traceback.format_exc()
+        print(f"Traceback: {traceback_str}")
+        await update.message.reply_text(f"Sorry, I encountered an error processing your message.\nError details: {str(e)}")
 
 # Main function to start the bot
 def main():
