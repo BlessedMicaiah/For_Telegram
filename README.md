@@ -1,6 +1,6 @@
 # Telegram OpenAI Bot
 
-A Telegram bot that uses OpenAI's GPT models via LangChain to respond to user messages.
+A Telegram bot that uses OpenAI's GPT models to respond to user messages.
 
 ## Setup
 

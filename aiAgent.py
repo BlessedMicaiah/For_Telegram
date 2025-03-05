@@ -1,58 +1,65 @@
+import os
+import traceback
+from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
-import os
-import traceback
+from langchain.globals import set_llm_provider
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# OpenAI API Key
+# Get API keys from .env file
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("Missing OpenAI API Key! Set it as an environment variable.")
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
 
-# Initialize ChatOpenAI client with API key
+# Validate API Keys
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("Missing Telegram Bot Token! Set TELEGRAM_BOT_TOKEN in your environment variables.")
+if not OPENAI_API_KEY:
+    raise ValueError("Missing OpenAI API Key! Set OPENAI_API_KEY in your environment variables.")
+if not LANGCHAIN_API_KEY:
+    raise ValueError("Missing LangChain API Key! Set LANGCHAIN_API_KEY in your environment variables.")
+
+# Set LangChain API provider
+set_llm_provider("langchain")  # Uses LangChain’s cloud services if needed
+
+# Initialize LangChain OpenAI client
 try:
     print("Initializing LangChain OpenAI client...")
     llm = ChatOpenAI(
-        api_key=OPENAI_API_KEY,
-        model="gpt-3.5-turbo",  # You can change this to another model like "gpt-4" if you have access
+        api_key=LANGCHAIN_API_KEY,  # Using LangChain API instead of direct OpenAI
+        model="gpt-3.5-turbo",
         temperature=0.7
     )
-    # Test the connection with a simple completion
+    # Test connection
     test_response = llm.invoke("Say OK")
     print("LangChain OpenAI client initialized successfully!")
 except Exception as e:
     print(f"ERROR initializing LangChain OpenAI client: {str(e)}")
-    print("Please check your OpenAI API key and network connection.")
+    print("Please check your LangChain API key and network connection.")
     raise
-
-# Telegram Bot Token
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("Missing Telegram Bot Token! Set it as an environment variable.")
 
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
-    await update.message.reply_text("Hello! I am Testo powered by GPT. Ask me anything!")
+    await update.message.reply_text("Hello! I am Testo, here to assist you. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
-    """Handles messages and sends OpenAI-generated responses."""
+    """Handles messages and sends AI-generated responses."""
     try:
         user_message = update.message.text
         print(f"Received message: {user_message}")
 
-        # Get response from OpenAI via LangChain
-        print("Sending request to OpenAI API...")
+        # Get AI response
+        print("Sending request to LangChain API...")
         response = llm.invoke(user_message)
 
         # Extract the bot's reply
         bot_reply = response.content
-        print(f"Received response from OpenAI API: {bot_reply[:30]}...")
+        print(f"Received response from LangChain API: {bot_reply[:30]}...")
         await update.message.reply_text(bot_reply)
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
@@ -63,12 +70,11 @@ async def chat(update: Update, context: CallbackContext):
 
 # Main function to start the bot
 def main():
-    """Start the bot using webhooks."""
-    
-    print("Starting bot with webhook...")
-    
+    """Start the bot using webhooks or polling."""
+    print("Starting bot...")
+
     # Create the Application object
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Add command and message handlers
     app.add_handler(CommandHandler("start", start))
@@ -77,37 +83,23 @@ def main():
     # Check if running on Render or locally
     is_render = os.environ.get('RENDER') == 'true'
     
-    # Configure webhook parameters
     if is_render:
-        # Production environment on Render
+        # Use webhook on Render
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get('WEBHOOK_URL', 'https://for-telegram.onrender.com')
-        print(f"Running on Render. Using webhook URL: {webhook_url}")
+        print(f"Running on Render with webhook URL: {webhook_url}")
+
+        # Run with webhook
+        app.run_webhook(
+            listen='0.0.0.0',
+            port=port,
+            url_path=TELEGRAM_BOT_TOKEN,
+            webhook_url=f"{webhook_url}/{TELEGRAM_BOT_TOKEN}"
+        )
     else:
-        # Local development - requires ngrok or similar tool
-        # To use locally:
-        # 1. Install ngrok: https://ngrok.com/download
-        # 2. Run: ngrok http 8443
-        # 3. Copy the HTTPS URL from ngrok and use it below
-        port = 8443
-        webhook_url = os.environ.get('WEBHOOK_URL')
-        if not webhook_url:
-            print("WARNING: No WEBHOOK_URL environment variable found!")
-            print("To test locally with webhooks, you need to:")
-            print("1. Install ngrok: https://ngrok.com/download")
-            print("2. Run: ngrok http 8443")
-            print("3. Set the WEBHOOK_URL environment variable to your ngrok HTTPS URL")
-            print("Example: set WEBHOOK_URL=https://a1b2c3d4.ngrok.io")
-            return
-        print(f"Running locally. Using webhook URL: {webhook_url}")
-    
-    # Run the bot with webhook
-    app.run_webhook(
-        listen='0.0.0.0',
-        port=port,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{webhook_url}/{BOT_TOKEN}"
-    )
-    
+        # Use polling for local development
+        print("Running locally with polling mode...")
+        app.run_polling()
+
 if __name__ == "__main__":
     main()
