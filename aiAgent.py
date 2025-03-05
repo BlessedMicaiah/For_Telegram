@@ -1,8 +1,9 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-import openai
+from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
+import traceback
 
 # Load environment variables from .env file
 load_dotenv()
@@ -12,19 +13,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("Missing OpenAI API Key! Set it as an environment variable.")
 
-# Initialize OpenAI client with API key
+# Initialize ChatOpenAI client with API key
 try:
-    print("Initializing OpenAI client...")
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    # Test the connection with a simple completion
-    test_response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "This is a test. Respond with 'OK'."}],
-        max_tokens=5
+    print("Initializing LangChain OpenAI client...")
+    llm = ChatOpenAI(
+        api_key=OPENAI_API_KEY,
+        model="gpt-3.5-turbo",  # You can change this to another model like "gpt-4" if you have access
+        temperature=0.7
     )
-    print("OpenAI client initialized successfully!")
+    # Test the connection with a simple completion
+    test_response = llm.invoke("Say OK")
+    print("LangChain OpenAI client initialized successfully!")
 except Exception as e:
-    print(f"ERROR initializing OpenAI client: {str(e)}")
+    print(f"ERROR initializing LangChain OpenAI client: {str(e)}")
     print("Please check your OpenAI API key and network connection.")
     raise
 
@@ -36,30 +37,26 @@ if not BOT_TOKEN:
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
-    await update.message.reply_text("Hello! I am Testo. Ask me anything!")
+    await update.message.reply_text("Hello! I am Testo powered by GPT. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
-    """Handles messages and sends AI-generated responses."""
+    """Handles messages and sends OpenAI-generated responses."""
     try:
         user_message = update.message.text
         print(f"Received message: {user_message}")
 
-        # Get response from OpenAI API
+        # Get response from OpenAI via LangChain
         print("Sending request to OpenAI API...")
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_message}]
-        )
+        response = llm.invoke(user_message)
 
         # Extract the bot's reply
-        bot_reply = response.choices[0].message.content
+        bot_reply = response.content
         print(f"Received response from OpenAI API: {bot_reply[:30]}...")
         await update.message.reply_text(bot_reply)
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
         print(f"ERROR: {error_msg}")
-        import traceback
         traceback_str = traceback.format_exc()
         print(f"Traceback: {traceback_str}")
         await update.message.reply_text(f"Sorry, I encountered an error processing your message.\nError details: {str(e)}")

@@ -1,18 +1,30 @@
 # Telegram OpenAI Bot
 
-A Telegram bot that uses OpenAI to respond to user messages.
+A Telegram bot that uses OpenAI's GPT models via LangChain to respond to user messages.
 
 ## Setup
 
 1. Clone this repository
-2. Install dependencies:
+2. Create a virtual environment:
+   ```
+   python -m venv openai-env
+   ```
+3. Activate the virtual environment:
+   ```
+   # Windows
+   .\openai-env\Scripts\activate
+   
+   # Linux/macOS
+   source openai-env/bin/activate
+   ```
+4. Install dependencies:
    ```
    pip install -r requirements.txt
    ```
-3. Create a `.env` file with the following variables:
+5. Create a `.env` file with the following variables:
    ```
-   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    OPENAI_API_KEY=your_openai_api_key
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    ```
 
 ## Running Locally with Webhooks

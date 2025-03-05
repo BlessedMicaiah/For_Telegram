@@ -1,5 +1,6 @@
 python-telegram-bot
 gunicorn
 openai
+langchain
 python-dotenv
 python-telegram-bot[webhooks]
