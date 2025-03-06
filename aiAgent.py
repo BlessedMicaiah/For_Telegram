@@ -6,11 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from openai import OpenAI
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.outputs import ChatGeneration, ChatResult
 from typing import Any, Dict, List, Optional
 from pydantic import Field, BaseModel
 
@@ -26,6 +22,9 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("Missing Telegram Bot Token! Set TELEGRAM_BOT_TOKEN in your environment variables.")
 if not DEEPSEEK_API_KEY:
     raise ValueError("Missing Deepseek API Key! Set DEEPSEEK_API_KEY in your environment variables.")
+
+# Set up message histories (per user)
+user_message_histories = {}
 
 # Initialize the Deepseek client
 try:
@@ -44,115 +43,100 @@ try:
     )
     print("Deepseek client initialized successfully!")
     
-    # Function to convert messages and call Deepseek API
-    def deepseek_chat(messages):
-        message_dicts = []
-        
-        # Debug info
-        print(f"Processing {len(messages)} messages")
-        
-        # Convert LangChain messages to Deepseek format
-        for message in messages:
-            # Handle tuple messages (sometimes messages come as (role, content) tuple)
-            if isinstance(message, tuple) and len(message) == 2:
-                role, content = message
-                print(f"Converting tuple message: role={role}, content={content[:30]}...")
-                if role == "human":
-                    message_dicts.append({"role": "user", "content": content})
-                elif role == "ai":
-                    message_dicts.append({"role": "assistant", "content": content})
-                elif role == "system":
-                    message_dicts.append({"role": "system", "content": content})
-            # Handle standard LangChain message objects
-            elif isinstance(message, HumanMessage):
-                message_dicts.append({"role": "user", "content": message.content})
-            elif isinstance(message, AIMessage):
-                message_dicts.append({"role": "assistant", "content": message.content})
-            elif isinstance(message, SystemMessage):
-                message_dicts.append({"role": "system", "content": message.content})
-            else:
-                print(f"⚠️ Unexpected message type: {type(message)}, content: {str(message)[:100]}")
-        
-        # Ensure we have at least one message
-        if not message_dicts:
-            print("WARNING: No valid messages to send to Deepseek API, adding default message")
-            message_dicts = [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Hello"}
-            ]
-        
-        print(f"Sending {len(message_dicts)} messages to Deepseek API")
-        
-        # Call Deepseek API
-        response = openai_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=message_dicts,
-            stream=False
-        )
-        
-        # Return the AI's response as an AIMessage
-        return AIMessage(content=response.choices[0].message.content)
-    
-    # Create conversation prompt template with proper input variables
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content="You are a helpful assistant that provides clear, accurate, and friendly responses."),
-        MessagesPlaceholder(variable_name="chat_history"),
-        HumanMessage(content="{question}")
-    ])
-    
-    # Create the conversation chain
-    conversation_chain = prompt | deepseek_chat
-    
-    # Set up conversation memory (per user)
-    user_message_histories = {}
-    
-    # Configure the chain with message history
-    conversation_with_history = RunnableWithMessageHistory(
-        conversation_chain,
-        lambda session_id: user_message_histories.get(session_id, ChatMessageHistory()),
-        input_messages_key="question",
-        history_messages_key="chat_history"
-    )
-    
 except Exception as e:
     print(f"ERROR initializing Deepseek client: {str(e)}")
     print("Please check your Deepseek API key and network connection.")
     traceback.print_exc()
     raise
 
+# Simple function to process a conversation and return a response
+def process_conversation(user_id: str, new_message: str) -> str:
+    """
+    Process a user message and return an AI response using Deepseek.
+    
+    Args:
+        user_id: The user's unique ID for retrieving their chat history
+        new_message: The newest message from the user
+        
+    Returns:
+        The AI's response text
+    """
+    try:
+        # Get or initialize chat history for this user
+        if user_id not in user_message_histories:
+            print(f"Creating new message history for user {user_id}")
+            user_message_histories[user_id] = ChatMessageHistory()
+        
+        chat_history = user_message_histories[user_id]
+        
+        # Add the user's message to history
+        chat_history.add_user_message(new_message)
+        
+        # Build the messages list for the API call
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that provides clear, accurate, and friendly responses."}
+        ]
+        
+        # Add chat history messages
+        for msg in chat_history.messages:
+            if isinstance(msg, HumanMessage):
+                messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                messages.append({"role": "assistant", "content": msg.content})
+            elif isinstance(msg, SystemMessage):
+                messages.append({"role": "system", "content": msg.content})
+        
+        print(f"Sending {len(messages)} messages to Deepseek API")
+        
+        # Call Deepseek API
+        response = openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            stream=False
+        )
+        
+        # Extract the response text
+        ai_response = response.choices[0].message.content
+        
+        # Add the AI response to history
+        chat_history.add_ai_message(ai_response)
+        
+        return ai_response
+        
+    except Exception as e:
+        print(f"Error processing conversation: {str(e)}")
+        traceback.print_exc()
+        return f"Sorry, I encountered an error processing your message. Error details: {str(e)}"
+
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
+    # Initialize chat history for new users
     if user_id not in user_message_histories:
         user_message_histories[user_id] = ChatMessageHistory()
-    await update.message.reply_text("Hello! I am Testo powered by Deepseek AI with LangChain integration. Ask me anything!")
+    
+    await update.message.reply_text("Hello! I am Testo powered by Deepseek AI. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
     try:
-        user_id = update.effective_user.id
+        user_id = str(update.effective_user.id)
         user_message = update.message.text
         print(f"Received message from user {user_id}: {user_message}")
         
-        if user_id not in user_message_histories:
-            user_message_histories[user_id] = ChatMessageHistory()
+        # Get AI response
+        print("Sending request to Deepseek API...")
+        ai_response = process_conversation(user_id, user_message)
         
-        print("Sending request to Deepseek API via LangChain...")
-        response = conversation_with_history.invoke(
-            {"question": user_message},
-            config={"configurable": {"session_id": str(user_id)}}
-        )
-        
-        ai_content = response.content
-        print(f"Received response via LangChain: {ai_content[:30]}...")
-        await update.message.reply_text(ai_content)
+        print(f"Received response: {ai_response[:30]}...")
+        await update.message.reply_text(ai_response)
         
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
         print(f"ERROR: {error_msg}")
         traceback_str = traceback.format_exc()
         print(f"Traceback: {traceback_str}")
-        await update.message.reply_text(f"Sorry, I encountered an error processing your message.\nError details: {str(e)}")
+        await update.message.reply_text(f"⚠️ Sorry, I encountered an error processing your message.\nError details: {str(e)}")
 
 # Main function to start the bot
 def main():
