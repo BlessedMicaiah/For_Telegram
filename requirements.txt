@@ -2,6 +2,6 @@ python-telegram-bot
 gunicorn
 openai
 langchain
-langchain-openai
+langchain-core
 python-dotenv
 python-telegram-bot[webhooks]

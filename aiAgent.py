@@ -3,60 +3,153 @@ import traceback
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from langchain_openai import ChatOpenAI
+from openai import OpenAI
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationChain
+from langchain.chat_models.base import BaseChatModel
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from typing import Any, Dict, List, Optional
 
 # Load environment variables
 load_dotenv()
 
 # Get API keys from .env file
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 # Validate API Keys
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("Missing Telegram Bot Token! Set TELEGRAM_BOT_TOKEN in your environment variables.")
-if not OPENAI_API_KEY:
-    raise ValueError("Missing OpenAI API Key! Set OPENAI_API_KEY in your environment variables.")
-if not LANGCHAIN_API_KEY:
-    raise ValueError("Missing LangChain API Key! Set LANGCHAIN_API_KEY in your environment variables.")
+if not DEEPSEEK_API_KEY:
+    raise ValueError("Missing Deepseek API Key! Set DEEPSEEK_API_KEY in your environment variables.")
 
-# Initialize LangChain OpenAI client
+# Custom LangChain Deepseek Integration
+class DeepseekChatModel(BaseChatModel):
+    """Custom LangChain integration for Deepseek Chat API."""
+    
+    client: Any  # OpenAI Client
+    model_name: str = "deepseek-chat"
+    system_message: str = "You are a helpful assistant."
+    
+    def __init__(self, client, model_name="deepseek-chat", system_message="You are a helpful assistant."):
+        super().__init__()
+        self.client = client
+        self.model_name = model_name
+        self.system_message = system_message
+    
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        message_dicts = []
+        
+        # Add system message if not present
+        if not messages or messages[0].type != "system":
+            message_dicts.append({"role": "system", "content": self.system_message})
+        
+        # Convert LangChain messages to Deepseek format
+        for message in messages:
+            if message.type == "human":
+                message_dicts.append({"role": "user", "content": message.content})
+            elif message.type == "ai":
+                message_dicts.append({"role": "assistant", "content": message.content})
+            elif message.type == "system":
+                message_dicts.append({"role": "system", "content": message.content})
+        
+        # Call Deepseek API
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=message_dicts,
+            stream=False,
+            **kwargs
+        )
+        
+        # Extract and return the response
+        ai_message = AIMessage(content=response.choices[0].message.content)
+        return {"generations": [[ai_message]], "llm_output": None}
+    
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        # For async support - implement if needed
+        return self._generate(messages, stop, run_manager, **kwargs)
+    
+    @property
+    def _llm_type(self) -> str:
+        return "deepseek"
+
+# Initialize the Deepseek client
 try:
-    print("Initializing LangChain OpenAI client...")
-    llm = ChatOpenAI(
-        api_key=LANGCHAIN_API_KEY,  # Using LangChain API
-        model="gpt-3.5-turbo",  # You can change this to another model like "gpt-4" if you have access
-        temperature=0.7
+    print("Initializing Deepseek client...")
+    openai_client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com"
     )
+    
     # Test connection
-    test_response = llm.invoke("Say OK")
-    print("LangChain OpenAI client initialized successfully!")
+    test_response = openai_client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": "You are a helpful assistant"}, 
+                  {"role": "user", "content": "Say OK"}],
+        stream=False
+    )
+    print("Deepseek client initialized successfully!")
+    
+    # Initialize LangChain with custom Deepseek integration
+    llm = DeepseekChatModel(client=openai_client)
+    
+    # Create conversation prompt template
+    prompt = ChatPromptTemplate.from_messages([
+        SystemMessage(content="You are a helpful assistant that provides clear, accurate, and friendly responses."),
+        MessagesPlaceholder(variable_name="history"),
+        HumanMessage(content="{input}")
+    ])
+    
+    # Set up conversation memory (per user)
+    user_memories = {}
+    
 except Exception as e:
-    print(f"ERROR initializing LangChain OpenAI client: {str(e)}")
-    print("Please check your LangChain API key and network connection.")
+    print(f"ERROR initializing Deepseek client: {str(e)}")
+    print("Please check your Deepseek API key and network connection.")
     raise
 
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
-    await update.message.reply_text("Hello! I am Testo powered by LangChain and OpenAI. Ask me anything!")
+    user_id = update.effective_user.id
+    # Initialize memory for new users
+    if user_id not in user_memories:
+        user_memories[user_id] = ConversationBufferMemory(return_messages=True)
+    
+    await update.message.reply_text("Hello! I am Testo powered by Deepseek AI with LangChain integration. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
-    """Handles messages and sends AI-generated responses."""
+    """Handles messages and sends AI-generated responses using LangChain."""
     try:
+        user_id = update.effective_user.id
         user_message = update.message.text
-        print(f"Received message: {user_message}")
-
-        # Get AI response
-        print("Sending request to LangChain API...")
-        response = llm.invoke(user_message)
-
+        print(f"Received message from user {user_id}: {user_message}")
+        
+        # Get or create memory for this user
+        if user_id not in user_memories:
+            user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="history")
+        
+        memory = user_memories[user_id]
+        
+        # Create the conversation chain
+        conversation = ConversationChain(
+            llm=llm,
+            memory=memory,
+            prompt=prompt,
+            verbose=True
+        )
+        
+        # Generate response
+        print(f"Sending request to Deepseek API via LangChain...")
+        response = conversation.predict(input=user_message)
+        
         # Extract the bot's reply
-        bot_reply = response.content
-        print(f"Received response from LangChain API: {bot_reply[:30]}...")
-        await update.message.reply_text(bot_reply)
+        print(f"Received response via LangChain: {response[:30]}...")
+        await update.message.reply_text(response)
+        
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
         print(f"ERROR: {error_msg}")
