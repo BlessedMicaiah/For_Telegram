@@ -48,16 +48,40 @@ try:
     def deepseek_chat(messages):
         message_dicts = []
         
+        # Debug info
+        print(f"Processing {len(messages)} messages")
+        
         # Convert LangChain messages to Deepseek format
         for message in messages:
-            if isinstance(message, HumanMessage):
+            # Handle tuple messages (sometimes messages come as (role, content) tuple)
+            if isinstance(message, tuple) and len(message) == 2:
+                role, content = message
+                print(f"Converting tuple message: role={role}, content={content[:30]}...")
+                if role == "human":
+                    message_dicts.append({"role": "user", "content": content})
+                elif role == "ai":
+                    message_dicts.append({"role": "assistant", "content": content})
+                elif role == "system":
+                    message_dicts.append({"role": "system", "content": content})
+            # Handle standard LangChain message objects
+            elif isinstance(message, HumanMessage):
                 message_dicts.append({"role": "user", "content": message.content})
             elif isinstance(message, AIMessage):
                 message_dicts.append({"role": "assistant", "content": message.content})
             elif isinstance(message, SystemMessage):
                 message_dicts.append({"role": "system", "content": message.content})
             else:
-                print(f"⚠️ Unexpected message type: {type(message)}")
+                print(f"⚠️ Unexpected message type: {type(message)}, content: {str(message)[:100]}")
+        
+        # Ensure we have at least one message
+        if not message_dicts:
+            print("WARNING: No valid messages to send to Deepseek API, adding default message")
+            message_dicts = [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello"}
+            ]
+        
+        print(f"Sending {len(message_dicts)} messages to Deepseek API")
         
         # Call Deepseek API
         response = openai_client.chat.completions.create(
