@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from openai import OpenAI
-from langchain_core.chat_history import BaseChatMessageHistory, ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain.memory import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
