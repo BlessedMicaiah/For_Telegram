@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from openai import OpenAI
 from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
+from langchain.chains import LLMChain
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -92,11 +92,11 @@ try:
     # Initialize LangChain with custom Deepseek integration
     llm = DeepseekChatModel(client=openai_client)
     
-    # Create conversation prompt template
+    # Create conversation prompt template with proper input variables
     prompt = ChatPromptTemplate.from_messages([
         SystemMessage(content="You are a helpful assistant that provides clear, accurate, and friendly responses."),
-        MessagesPlaceholder(variable_name="history"),
-        HumanMessage(content="{input}")
+        MessagesPlaceholder(variable_name="chat_history"),
+        HumanMessage(content="{question}")
     ])
     
     # Set up conversation memory (per user)
@@ -113,7 +113,7 @@ async def start(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     # Initialize memory for new users
     if user_id not in user_memories:
-        user_memories[user_id] = ConversationBufferMemory(return_messages=True)
+        user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="chat_history")
     
     await update.message.reply_text("Hello! I am Testo powered by Deepseek AI with LangChain integration. Ask me anything!")
 
@@ -127,12 +127,12 @@ async def chat(update: Update, context: CallbackContext):
         
         # Get or create memory for this user
         if user_id not in user_memories:
-            user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="history")
+            user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="chat_history")
         
         memory = user_memories[user_id]
         
         # Create the conversation chain
-        conversation = ConversationChain(
+        conversation = LLMChain(
             llm=llm,
             memory=memory,
             prompt=prompt,
@@ -141,7 +141,7 @@ async def chat(update: Update, context: CallbackContext):
         
         # Generate response
         print(f"Sending request to Deepseek API via LangChain...")
-        response = conversation.predict(input=user_message)
+        response = conversation.predict(question=user_message)
         
         # Extract the bot's reply
         print(f"Received response via LangChain: {response[:30]}...")
