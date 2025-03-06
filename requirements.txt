@@ -3,5 +3,6 @@ gunicorn
 openai
 langchain
 langchain-core
+deepseek
 python-dotenv
 python-telegram-bot[webhooks]
