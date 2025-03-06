@@ -27,56 +27,6 @@ if not TELEGRAM_BOT_TOKEN:
 if not DEEPSEEK_API_KEY:
     raise ValueError("Missing Deepseek API Key! Set DEEPSEEK_API_KEY in your environment variables.")
 
-# Custom LangChain Deepseek Integration
-class DeepseekChatModel(BaseChatModel):
-    """Custom LangChain integration for Deepseek Chat API."""
-    
-    client: Any = Field(..., description="OpenAI Client")
-    model_name: str = Field(default="deepseek-chat", description="Model name")
-    system_message: str = Field(default="You are a helpful assistant.", description="System message")
-    
-    def __init__(self, client, model_name="deepseek-chat", system_message="You are a helpful assistant."):
-        super().__init__()
-        self.client = client
-        self.model_name = model_name
-        self.system_message = system_message
-    
-    def _generate(self, messages, stop=None, **kwargs):
-        message_dicts = []
-        
-        # Add system message if not present
-        if not messages or messages[0].type != "system":
-            message_dicts.append({"role": "system", "content": self.system_message})
-        
-        # Convert LangChain messages to Deepseek format
-        for message in messages:
-            if message.type == "human":
-                message_dicts.append({"role": "user", "content": message.content})
-            elif message.type == "ai":
-                message_dicts.append({"role": "assistant", "content": message.content})
-            elif message.type == "system":
-                message_dicts.append({"role": "system", "content": message.content})
-        
-        # Call Deepseek API
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=message_dicts,
-            stream=False,
-            **kwargs
-        )
-        
-        # Extract and return the response
-        content = response.choices[0].message.content
-        generation = ChatGeneration(
-            message=AIMessage(content=content),
-            generation_info={}
-        )
-        return ChatResult(generations=[generation])
-
-    @property
-    def _llm_type(self) -> str:
-        return "deepseek-chat"
-
 # Initialize the Deepseek client
 try:
     print("Initializing Deepseek client...")
@@ -94,8 +44,28 @@ try:
     )
     print("Deepseek client initialized successfully!")
     
-    # Initialize LangChain with custom Deepseek integration
-    llm = DeepseekChatModel(client=openai_client)
+    # Create a simple function that converts messages and calls Deepseek API
+    def deepseek_chat(messages):
+        message_dicts = []
+        
+        # Convert LangChain messages to Deepseek format
+        for message in messages:
+            if message.type == "human":
+                message_dicts.append({"role": "user", "content": message.content})
+            elif message.type == "ai":
+                message_dicts.append({"role": "assistant", "content": message.content})
+            elif message.type == "system":
+                message_dicts.append({"role": "system", "content": message.content})
+        
+        # Call Deepseek API
+        response = openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=message_dicts,
+            stream=False
+        )
+        
+        # Return the response as an AIMessage
+        return AIMessage(content=response.choices[0].message.content)
     
     # Create conversation prompt template with proper input variables
     prompt = ChatPromptTemplate.from_messages([
@@ -104,8 +74,8 @@ try:
         HumanMessage(content="{question}")
     ])
     
-    # Create the conversation chain using the new pipe operator pattern
-    conversation_chain = prompt | llm
+    # Create the conversation chain using the function as the LLM
+    conversation_chain = prompt | deepseek_chat
     
     # Set up conversation memory (per user)
     user_message_histories = {}
@@ -154,8 +124,7 @@ async def chat(update: Update, context: CallbackContext):
         )
         
         # Extract the bot's reply from the response
-        ai_message = response.generations[0].message
-        ai_content = ai_message.content
+        ai_content = response.content
         
         print(f"Received response via LangChain: {ai_content[:30]}...")
         await update.message.reply_text(ai_content)
