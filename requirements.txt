@@ -3,6 +3,7 @@ gunicorn
 openai
 langchain
 langchain-core
+langchain-community
 deepseek
 pydantic
 python-dotenv
