@@ -44,18 +44,20 @@ try:
     )
     print("Deepseek client initialized successfully!")
     
-    # Create a simple function that converts messages and calls Deepseek API
+    # Function to convert messages and call Deepseek API
     def deepseek_chat(messages):
         message_dicts = []
         
         # Convert LangChain messages to Deepseek format
         for message in messages:
-            if message.type == "human":
+            if isinstance(message, HumanMessage):
                 message_dicts.append({"role": "user", "content": message.content})
-            elif message.type == "ai":
+            elif isinstance(message, AIMessage):
                 message_dicts.append({"role": "assistant", "content": message.content})
-            elif message.type == "system":
+            elif isinstance(message, SystemMessage):
                 message_dicts.append({"role": "system", "content": message.content})
+            else:
+                print(f"⚠️ Unexpected message type: {type(message)}")
         
         # Call Deepseek API
         response = openai_client.chat.completions.create(
@@ -64,7 +66,7 @@ try:
             stream=False
         )
         
-        # Return the response as an AIMessage
+        # Return the AI's response as an AIMessage
         return AIMessage(content=response.choices[0].message.content)
     
     # Create conversation prompt template with proper input variables
@@ -74,7 +76,7 @@ try:
         HumanMessage(content="{question}")
     ])
     
-    # Create the conversation chain using the function as the LLM
+    # Create the conversation chain
     conversation_chain = prompt | deepseek_chat
     
     # Set up conversation memory (per user)
@@ -96,36 +98,28 @@ except Exception as e:
 
 # Define a function for the /start command
 async def start(update: Update, context: CallbackContext):
-    """Sends a welcome message."""
     user_id = update.effective_user.id
-    # Initialize message history for new users
     if user_id not in user_message_histories:
         user_message_histories[user_id] = ChatMessageHistory()
-    
     await update.message.reply_text("Hello! I am Testo powered by Deepseek AI with LangChain integration. Ask me anything!")
 
 # Define the function to handle incoming user messages
 async def chat(update: Update, context: CallbackContext):
-    """Handles messages and sends AI-generated responses using LangChain."""
     try:
         user_id = update.effective_user.id
         user_message = update.message.text
         print(f"Received message from user {user_id}: {user_message}")
         
-        # Get or create message history for this user
         if user_id not in user_message_histories:
             user_message_histories[user_id] = ChatMessageHistory()
         
-        # Generate response using the new pattern
-        print(f"Sending request to Deepseek API via LangChain...")
+        print("Sending request to Deepseek API via LangChain...")
         response = conversation_with_history.invoke(
             {"question": user_message},
             config={"configurable": {"session_id": str(user_id)}}
         )
         
-        # Extract the bot's reply from the response
         ai_content = response.content
-        
         print(f"Received response via LangChain: {ai_content[:30]}...")
         await update.message.reply_text(ai_content)
         
@@ -138,26 +132,16 @@ async def chat(update: Update, context: CallbackContext):
 
 # Main function to start the bot
 def main():
-    """Start the bot using webhooks or polling."""
     print("Starting bot...")
-
-    # Create the Application object
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-    # Add command and message handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    # Check if running on Render or locally
-    is_render = os.environ.get('RENDER') == 'true'
     
+    is_render = os.environ.get('RENDER') == 'true'
     if is_render:
-        # Use webhook on Render
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get('WEBHOOK_URL', 'https://for-telegram.onrender.com')
         print(f"Running on Render with webhook URL: {webhook_url}")
-
-        # Run with webhook
         app.run_webhook(
             listen='0.0.0.0',
             port=port,
@@ -165,7 +149,6 @@ def main():
             webhook_url=f"{webhook_url}/{TELEGRAM_BOT_TOKEN}"
         )
     else:
-        # Use polling for local development
         print("Running locally with polling mode...")
         app.run_polling()
 
