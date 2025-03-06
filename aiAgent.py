@@ -9,6 +9,8 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.outputs import ChatGeneration, ChatResult
 from typing import Any, Dict, List, Optional
 from pydantic import Field, BaseModel
 
@@ -26,7 +28,7 @@ if not DEEPSEEK_API_KEY:
     raise ValueError("Missing Deepseek API Key! Set DEEPSEEK_API_KEY in your environment variables.")
 
 # Custom LangChain Deepseek Integration
-class DeepseekChatModel(BaseModel):
+class DeepseekChatModel(BaseChatModel):
     """Custom LangChain integration for Deepseek Chat API."""
     
     client: Any = Field(..., description="OpenAI Client")
@@ -34,9 +36,12 @@ class DeepseekChatModel(BaseModel):
     system_message: str = Field(default="You are a helpful assistant.", description="System message")
     
     def __init__(self, client, model_name="deepseek-chat", system_message="You are a helpful assistant."):
-        super().__init__(client=client, model_name=model_name, system_message=system_message)
+        super().__init__()
+        self.client = client
+        self.model_name = model_name
+        self.system_message = system_message
     
-    def invoke(self, messages, **kwargs):
+    def _generate(self, messages, stop=None, **kwargs):
         message_dicts = []
         
         # Add system message if not present
@@ -61,7 +66,16 @@ class DeepseekChatModel(BaseModel):
         )
         
         # Extract and return the response
-        return AIMessage(content=response.choices[0].message.content)
+        content = response.choices[0].message.content
+        generation = ChatGeneration(
+            message=AIMessage(content=content),
+            generation_info={}
+        )
+        return ChatResult(generations=[generation])
+
+    @property
+    def _llm_type(self) -> str:
+        return "deepseek-chat"
 
 # Initialize the Deepseek client
 try:
@@ -107,6 +121,7 @@ try:
 except Exception as e:
     print(f"ERROR initializing Deepseek client: {str(e)}")
     print("Please check your Deepseek API key and network connection.")
+    traceback.print_exc()
     raise
 
 # Define a function for the /start command
@@ -138,9 +153,12 @@ async def chat(update: Update, context: CallbackContext):
             config={"configurable": {"session_id": str(user_id)}}
         )
         
-        # Extract the bot's reply
-        print(f"Received response via LangChain: {response.content[:30]}...")
-        await update.message.reply_text(response.content)
+        # Extract the bot's reply from the response
+        ai_message = response.generations[0].message
+        ai_content = ai_message.content
+        
+        print(f"Received response via LangChain: {ai_content[:30]}...")
+        await update.message.reply_text(ai_content)
         
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
