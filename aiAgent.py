@@ -4,13 +4,12 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from openai import OpenAI
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import LLMChain
-from langchain.chat_models.base import BaseChatModel
+from langchain_core.chat_history import BaseChatMessageHistory, ChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import Any, Dict, List, Optional
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +25,7 @@ if not DEEPSEEK_API_KEY:
     raise ValueError("Missing Deepseek API Key! Set DEEPSEEK_API_KEY in your environment variables.")
 
 # Custom LangChain Deepseek Integration
-class DeepseekChatModel(BaseChatModel):
+class DeepseekChatModel(BaseModel):
     """Custom LangChain integration for Deepseek Chat API."""
     
     client: Any = Field(..., description="OpenAI Client")
@@ -36,7 +35,7 @@ class DeepseekChatModel(BaseChatModel):
     def __init__(self, client, model_name="deepseek-chat", system_message="You are a helpful assistant."):
         super().__init__(client=client, model_name=model_name, system_message=system_message)
     
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+    def invoke(self, messages, **kwargs):
         message_dicts = []
         
         # Add system message if not present
@@ -61,16 +60,7 @@ class DeepseekChatModel(BaseChatModel):
         )
         
         # Extract and return the response
-        ai_message = AIMessage(content=response.choices[0].message.content)
-        return {"generations": [[ai_message]], "llm_output": None}
-    
-    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-        # For async support - implement if needed
-        return self._generate(messages, stop, run_manager, **kwargs)
-    
-    @property
-    def _llm_type(self) -> str:
-        return "deepseek"
+        return AIMessage(content=response.choices[0].message.content)
 
 # Initialize the Deepseek client
 try:
@@ -99,8 +89,19 @@ try:
         HumanMessage(content="{question}")
     ])
     
+    # Create the conversation chain using the new pipe operator pattern
+    conversation_chain = prompt | llm
+    
     # Set up conversation memory (per user)
-    user_memories = {}
+    user_message_histories = {}
+    
+    # Configure the chain with message history
+    conversation_with_history = RunnableWithMessageHistory(
+        conversation_chain,
+        lambda session_id: user_message_histories.get(session_id, ChatMessageHistory()),
+        input_messages_key="question",
+        history_messages_key="chat_history"
+    )
     
 except Exception as e:
     print(f"ERROR initializing Deepseek client: {str(e)}")
@@ -111,9 +112,9 @@ except Exception as e:
 async def start(update: Update, context: CallbackContext):
     """Sends a welcome message."""
     user_id = update.effective_user.id
-    # Initialize memory for new users
-    if user_id not in user_memories:
-        user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="chat_history")
+    # Initialize message history for new users
+    if user_id not in user_message_histories:
+        user_message_histories[user_id] = ChatMessageHistory()
     
     await update.message.reply_text("Hello! I am Testo powered by Deepseek AI with LangChain integration. Ask me anything!")
 
@@ -125,27 +126,20 @@ async def chat(update: Update, context: CallbackContext):
         user_message = update.message.text
         print(f"Received message from user {user_id}: {user_message}")
         
-        # Get or create memory for this user
-        if user_id not in user_memories:
-            user_memories[user_id] = ConversationBufferMemory(return_messages=True, memory_key="chat_history")
+        # Get or create message history for this user
+        if user_id not in user_message_histories:
+            user_message_histories[user_id] = ChatMessageHistory()
         
-        memory = user_memories[user_id]
-        
-        # Create the conversation chain
-        conversation = LLMChain(
-            llm=llm,
-            memory=memory,
-            prompt=prompt,
-            verbose=True
+        # Generate response using the new pattern
+        print(f"Sending request to Deepseek API via LangChain...")
+        response = conversation_with_history.invoke(
+            {"question": user_message},
+            config={"configurable": {"session_id": str(user_id)}}
         )
         
-        # Generate response
-        print(f"Sending request to Deepseek API via LangChain...")
-        response = conversation.predict(question=user_message)
-        
         # Extract the bot's reply
-        print(f"Received response via LangChain: {response[:30]}...")
-        await update.message.reply_text(response)
+        print(f"Received response via LangChain: {response.content[:30]}...")
+        await update.message.reply_text(response.content)
         
     except Exception as e:
         error_msg = f"Error processing message: {str(e)}"
