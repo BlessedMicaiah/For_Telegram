@@ -1,4 +1,4 @@
-# Telegram OpenAI Bot
+# Telegram Bot
 
 A Telegram bot that uses OpenAI's GPT models to respond to user messages.
 
