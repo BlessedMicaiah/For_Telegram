@@ -7,10 +7,10 @@ from openai import OpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 from langchain.chat_models.base import BaseChatModel
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import Any, Dict, List, Optional
+from pydantic import Field
 
 # Load environment variables
 load_dotenv()
@@ -29,15 +29,12 @@ if not DEEPSEEK_API_KEY:
 class DeepseekChatModel(BaseChatModel):
     """Custom LangChain integration for Deepseek Chat API."""
     
-    client: Any  # OpenAI Client
-    model_name: str = "deepseek-chat"
-    system_message: str = "You are a helpful assistant."
+    client: Any = Field(..., description="OpenAI Client")
+    model_name: str = Field(default="deepseek-chat", description="Model name")
+    system_message: str = Field(default="You are a helpful assistant.", description="System message")
     
     def __init__(self, client, model_name="deepseek-chat", system_message="You are a helpful assistant."):
-        super().__init__()
-        self.client = client
-        self.model_name = model_name
-        self.system_message = system_message
+        super().__init__(client=client, model_name=model_name, system_message=system_message)
     
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         message_dicts = []
